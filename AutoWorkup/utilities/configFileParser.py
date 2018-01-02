@@ -203,7 +203,7 @@ def parseFile(configFile, env, workphase):
     assert os.path.exists(configFile), "Configuration file could not be found: {0}".format(configFile)
     parser = ConfigParser(allow_no_value=True)  # Parse configuration file parser = ConfigParser()
     with io.open(configFile, "r", encoding='ascii') as configFID:
-        parser.read_file(configFID)
+        parser.readfp(configFID)
     assert (parser.has_option(env, '_BUILD_DIR') or parser.has_option('DEFAULT', '_BUILD_DIR')
             ), "BUILD_DIR option not in {0}".format(env)
     environment, cluster = parseEnvironment(parser, env)

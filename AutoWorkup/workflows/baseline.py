@@ -106,7 +106,7 @@ def CreateLeftRightWMHemispheres(BRAINLABELSFile,
 
         return (largestMask * dilateMask > 0)
 
-    ABCLabelsImage = sitk.Cast(sitk.ReadImage(BRAINLABELSFile), sitk.sitkUInt32)
+    ABCLabelsImage = sitk.Cast(sitk.ReadImage(str(BRAINLABELSFile)), sitk.sitkUInt32)
     # # Remove brain stem and cerebellum
     BS = (ABCLabelsImage == 30)
     Cerebellum_GM = (ABCLabelsImage == 12)
@@ -116,7 +116,7 @@ def CreateLeftRightWMHemispheres(BRAINLABELSFile,
     ABCLabelsImage = KeepRegion * ABCLabelsImage
 
     HDCMARegisteredVentricleLabels = sitk.Cast(
-        sitk.ReadImage(HDCMARegisteredVentricleMaskFN), sitk.sitkUInt32)
+        sitk.ReadImage(str(HDCMARegisteredVentricleMaskFN)), sitk.sitkUInt32)
     ABCCSFLabelCode = 4
     HDMCALeftVentricleCode = 4
     HDMCARightVentricleCode = 43
@@ -146,9 +146,9 @@ def CreateLeftRightWMHemispheres(BRAINLABELSFile,
     ### START WM
 
     # Template masks for left and right hemispheres
-    Left_template = (sitk.Cast(sitk.ReadImage(LeftHemisphereMaskName), sitk.sitkUInt32) > 0)
+    Left_template = (sitk.Cast(sitk.ReadImage(str(LeftHemisphereMaskName)), sitk.sitkUInt32) > 0)
     Right_template = (
-    sitk.Cast(sitk.ReadImage(RightHemisphereMaskName), sitk.sitkUInt32) > 0)
+    sitk.Cast(sitk.ReadImage(str(RightHemisphereMaskName)), sitk.sitkUInt32) > 0)
 
     # Split into left and right hemispheres
     WM_left = (WM_Final * Left_template > 0)

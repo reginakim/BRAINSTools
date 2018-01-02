@@ -204,6 +204,11 @@ def CreateJointFusionWorkflow(WFname, onlyT1, master_config, runFixFusionLabelMa
 
     for jointFusion_atlas_subject in list(jointFusionAtlasDict.keys()):
         ## Need DataGrabber Here For the Atlas
+
+        print( jointFusionAtlasDict[jointFusion_atlas_subject] )
+        print( jointFusionAtlasDict[jointFusion_atlas_subject] )
+        print( jointFusionAtlasDict[jointFusion_atlas_subject] )
+        print( jointFusionAtlasDict[jointFusion_atlas_subject] )
         jointFusionAtlases[jointFusion_atlas_subject] = pe.Node(interface=IdentityInterface(
             fields=['t1', 't2', 'label', 'lmks', 'registration_mask']),
             name='jointFusionAtlasInput' + jointFusion_atlas_subject)
@@ -213,8 +218,7 @@ def CreateJointFusionWorkflow(WFname, onlyT1, master_config, runFixFusionLabelMa
             'label']
         jointFusionAtlases[jointFusion_atlas_subject].inputs.lmks = jointFusionAtlasDict[jointFusion_atlas_subject][
             'lmks']
-        jointFusionAtlases[jointFusion_atlas_subject].inputs.registration_mask = \
-        jointFusionAtlasDict[jointFusion_atlas_subject]['registration_mask']
+        jointFusionAtlases[jointFusion_atlas_subject].inputs.registration_mask = jointFusionAtlasDict[jointFusion_atlas_subject]['registration_mask']
         ## Create BLI first
         ########################################################
         # Run BLI atlas_to_subject

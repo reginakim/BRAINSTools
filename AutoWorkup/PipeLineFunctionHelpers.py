@@ -138,7 +138,7 @@ def FixWMPartitioning(brainMask, PosteriorsList):
             10000)
 
     print("Reading {0} of type {1}".format(brainMask, type(brainMask)))
-    BM = sitk.BinaryThreshold(sitk.ReadImage(brainMask), 1, 1000)
+    BM = sitk.BinaryThreshold(sitk.ReadImage(str(brainMask)), 1, 1000)
     BM_FILLED = FillHolePreserveEdge(BM, 3)
 
     NOTCSF_index = None  # Note: Purposfully using '-1' as it will force an error.
@@ -175,17 +175,17 @@ def FixWMPartitioning(brainMask, PosteriorsList):
                                    NOTREGION_NAME):
         print("Reading {0} of type {1}".format(ShiftPosteriorsList[NOTREGION_index],
                                                type(ShiftPosteriorsList[NOTREGION_index])))
-        NOTREGION = sitk.ReadImage(ShiftPosteriorsList[NOTREGION_index])
+        NOTREGION = sitk.ReadImage(str(ShiftPosteriorsList[NOTREGION_index]))
         print("Reading {0} of type {1}".format(ShiftPosteriorsList[REGION_index],
                                                type(ShiftPosteriorsList[REGION_index])))
-        REGION = sitk.ReadImage(ShiftPosteriorsList[REGION_index])
+        REGION = sitk.ReadImage(str(ShiftPosteriorsList[REGION_index]))
         ALL_REGION = NOTREGION + REGION
         NEW_REGION = ALL_REGION * sitk.Cast(BM_FILLED, sitk.sitkFloat32)
         NEW_NOTREGION = ALL_REGION * sitk.Cast((1 - BM_FILLED), sitk.sitkFloat32)
         NEW_REGION_FN = os.path.realpath('POSTERIOR_{0}.nii.gz'.format(REGION_NAME))
         NEW_NOTREGION_FN = os.path.realpath('POSTERIOR_{0}.nii.gz'.format(NOTREGION_NAME))
-        sitk.WriteImage(NEW_REGION, NEW_REGION_FN)
-        sitk.WriteImage(NEW_NOTREGION, NEW_NOTREGION_FN)
+        sitk.WriteImage(NEW_REGION, str(NEW_REGION_FN))
+        sitk.WriteImage(NEW_NOTREGION, str(NEW_NOTREGION_FN))
         ShiftPosteriorsList[NOTREGION_index] = NEW_NOTREGION_FN
         ShiftPosteriorsList[REGION_index] = NEW_REGION_FN
         return ShiftPosteriorsList
@@ -201,10 +201,10 @@ def FixWMPartitioning(brainMask, PosteriorsList):
                                                        'NOTVB')
 
     print("Reading {0} of type {1}".format(PosteriorsList[AIR_index], type(PosteriorsList[AIR_index])))
-    AirMask = sitk.BinaryThreshold(sitk.ReadImage(PosteriorsList[AIR_index]), 0.50, 1000000)
+    AirMask = sitk.BinaryThreshold(sitk.ReadImage(str(PosteriorsList[AIR_index])), 0.50, 1000000)
     nonAirMask = sitk.Cast(1 - AirMask, sitk.sitkUInt8)
     nonAirRegionMask = os.path.realpath('NonAirMask.nii.gz')
-    sitk.WriteImage(nonAirMask, nonAirRegionMask)
+    sitk.WriteImage(nonAirMask, str(nonAirRegionMask))
 
     POSTERIOR_LABELS = dict()  # (FG,Label)
     POSTERIOR_LABELS["POSTERIOR_WM.nii.gz"] = (1, 1)
@@ -244,7 +244,7 @@ def AccumulateLikeTissuePosteriors(posteriorImages):
     load_images_list = dict()
     for full_pathname in posteriorImages:
         base_name = os.path.basename(full_pathname)
-        load_images_list[base_name] = sitk.ReadImage(full_pathname)
+        load_images_list[base_name] = sitk.ReadImage(str(full_pathname))
     GM_ACCUM = [
         'POSTERIOR_SURFGM.nii.gz',
         'POSTERIOR_BASAL.nii.gz',
@@ -284,7 +284,7 @@ def AccumulateLikeTissuePosteriors(posteriorImages):
         accum_image = load_images_list[inlist[0]]  # copy first image
         for curr_image in range(1, len(inlist)):
             accum_image = accum_image + load_images_list[inlist[curr_image]]
-        sitk.WriteImage(accum_image, outname)
+        sitk.WriteImage(accum_image, str(outname))
         AccumulatePriorsList.append(os.path.realpath(outname))
     print("HACK \n\n\n\n\n\n\n HACK \n\n\n: {APL}\n".format(APL=AccumulatePriorsList))
     print(": {APN}\n".format(APN=AccumulatePriorsNames))

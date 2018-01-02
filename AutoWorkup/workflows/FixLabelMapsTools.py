@@ -57,8 +57,8 @@ def FixLabelMapFromNeuromorphemetrics2012(fusionFN, FixedHeadFN, posterior_dict,
             outlabels = sitk.Cast(outlabels, sitk.sitkUInt64)
         return outlabels
 
-    fusionIm = sitk.Cast(sitk.ReadImage(fusionFN), sitk.sitkUInt32)
-    FixedHead = sitk.Cast(sitk.ReadImage(FixedHeadFN), sitk.sitkUInt32)
+    fusionIm = sitk.Cast(sitk.ReadImage(str(fusionFN)), sitk.sitkUInt32)
+    FixedHead = sitk.Cast(sitk.ReadImage(str(FixedHeadFN)), sitk.sitkUInt32)
 
     BRAINSABC_DICT = {'BRAINSTEM': 30, 'CSF': 4, 'BLOOD': 5}
 
@@ -69,7 +69,7 @@ def FixLabelMapFromNeuromorphemetrics2012(fusionFN, FixedHeadFN, posterior_dict,
     # DEBUG sitk.WriteImage(lbl_outter_ring,"/tmp/lbl_outter_ring.nii.gz")
 
 
-    vb_post = sitk.ReadImage(posterior_dict["VB"])
+    vb_post = sitk.ReadImage(str(posterior_dict["VB"]))
     ring_vb = lbl_outter_ring * sitk.BinaryThreshold(vb_post, 0.5, 1.01, 1, 0)  # just outside mask
     # DEBUG sitk.WriteImage(ring_vb,"/tmp/ring_vb.nii.gz")
     inner_vb = lbl_orig_mask * sitk.BinaryThreshold(vb_post, 0.85, 1.01, 1, 0)  # inside mask, but very high probability
@@ -80,7 +80,7 @@ def FixLabelMapFromNeuromorphemetrics2012(fusionFN, FixedHeadFN, posterior_dict,
     # DEBUG sitk.WriteImage(blood_labels,"/tmp/blood_labels.nii.gz")
     outlabels = ForceMaskInsert(outlabels, blood_labels, OUT_DICT['BLOOD'])
 
-    csf_post = sitk.ReadImage(posterior_dict["CSF"])
+    csf_post = sitk.ReadImage(str(posterior_dict["CSF"]))
     ring_csf = lbl_outter_ring * sitk.BinaryThreshold(csf_post, 0.5, 1.01, 1, 0)  # just outside mask
     # DEBUG sitk.WriteImage(ring_csf,"/tmp/ring_csf.nii.gz")
     inner_csf = lbl_orig_mask * sitk.BinaryThreshold(csf_post, 0.85, 1.01, 1,
@@ -94,7 +94,7 @@ def FixLabelMapFromNeuromorphemetrics2012(fusionFN, FixedHeadFN, posterior_dict,
 
     ## Now split CSF based on LeftHemisphereMask
     if LeftHemisphereFN != None:
-        LeftHemisphereIm = sitk.Cast(sitk.ReadImage(LeftHemisphereFN), sitk.sitkUInt32)
+        LeftHemisphereIm = sitk.Cast(sitk.ReadImage(str(LeftHemisphereFN)), sitk.sitkUInt32)
         left_hemi_pre = (outlabels == OUT_DICT['LH_CSF'])
         outlabels = ForceMaskInsert(outlabels, left_hemi_pre, OUT_DICT['RH_CSF'])  ## Make all CSF Right hemisphere
         left_hemi_post = (LeftHemisphereIm * sitk.Cast((outlabels == OUT_DICT['RH_CSF']),
