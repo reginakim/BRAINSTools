@@ -15,7 +15,7 @@ Processing steps:
     2. Threshold T2-FLAIR
 
 Usage:
-  WMHFLAIRExtractCandidateROI.py --inputFLVolume inputFLVolume --inputT1Volume inputT1Volume --inputBrainLabelsMapImage BLMImage --program_paths PROGRAM_PATHS [--processingType hypo|hyper] [--inputIntensityReference inputIntensityReference] [--python_aux_paths PYTHON_AUX_PATHS] [--workflowCacheDir CACHEDIR] [--resultDir RESULTDIR] [--outputPrefix outputPrefix]
+  WMHFLAIRExtractCandidateROI.py --inputFLVolume inputFLVolume --inputT1Volume inputT1Volume --inputBrainLabelsMapImage BLMImage --program_paths PROGRAM_PATHS [--processingType hypo|hyper] [--inputIntensityReference inputIntensityReference] [--python_aux_paths PYTHON_AUX_PATHS] [--cacheDir CACHEDIR] [--resultDir RESULTDIR] [--outputPrefix outputPrefix]
   WMHFLAIRExtractCandidateROI.py -v | --version
   WMHFLAIRExtractCandidateROI.py -h | --help
 
@@ -29,7 +29,7 @@ Options:
   --inputBrainLabelsMapImage BLMImage               Path to the input brain labels map image
   --program_paths PROGRAM_PATHS                     Path to the directory where binary files are places
   --python_aux_paths PYTHON_AUX_PATHS               Path to the AutoWorkup directory
-  --workflowCacheDir CACHEDIR                       Base directory that cache outputs of workflow will be written to (default: ./)
+  --cacheDir CACHEDIR                       Base directory that cache outputs of workflow will be written to (default: ./)
   --resultDir RESULTDIR                             Outputs of dataSink will be written to a sub directory under the resultDir named by input scan outputPrefix(default: CACHEDIR)
   --outputPrefix outputPrefix                       outputPrefix that can be used as an identifier and pre-fix for the output. (default: WMHFLAIRExtractCandidateROIOutput )
 """
@@ -356,11 +356,11 @@ if __name__ == '__main__':
     else:
         PYTHON_AUX_PATHS = argv['--python_aux_paths']
 
-    if argv['--workflowCacheDir'] == None:
+    if argv['--cacheDir'] == None:
         print("*** workflow cache directory is set to current working directory.")
         CACHEDIR = os.getcwd()
     else:
-        CACHEDIR = os.path.abspath( argv['--workflowCacheDir'] )
+        CACHEDIR = os.path.abspath( argv['--cacheDir'] )
         if not os.path.exists(CACHEDIR):
             os.makedirs( CACHEDIR )
         assert os.path.exists(CACHEDIR), "Cache directory is not found: %s" % CACHEDIR
@@ -409,35 +409,25 @@ if __name__ == '__main__':
             inputIntensityReference = "/Users/eunyoungkim/src/NamicBuild_20171031/bin/Atlas/Atlas_20131115/template_t2_clipped.nii.gz",
             thresholdList = [0.3, 0.4, 0.45, 0.5],
             )
-    #exit = _wmh_flairThreshold(
-    #        outputPrefix,
-    #        CACHEDIR,
-    #        inputFLVolume,
-    #        inputT1Volume,
-    #        LabelMapImage,
-    #        processingType="hypo",
-    #        inputIntensityReference = "/Users/eunyoungkim/src/NamicBuild_20171031/bin/Atlas/Atlas_20131115/template_t2_clipped.nii.gz",
-    #        thresholdList = [025,0.26,0.27,0.28,0.29],
-    #        )
-    #exit = _wmh_flairThreshold(
-    #        outputPrefix,
-    #        CACHEDIR,
-    #        inputFLVolume,
-    #        inputT1Volume,
-    #        LabelMapImage,
-    #        processingType="hyper",
-    #        inputIntensityReference = "",
-    #        thresholdList = [0.7, 0.725, 0.75, 0.775, 0.8],
-    #        )
-    #exit = _wmh_flairThreshold(
-    #        outputPrefix,
-    #        CACHEDIR,
-    #        inputFLVolume,
-    #        inputT1Volume,
-    #        LabelMapImage,
-    #        processingType="hypo",
-    #        inputIntensityReference = "",
-    #        thresholdList = [0.4, 0.45, 0.5],
-    #        )
-
     sys.exit(exit)
+
+
+
+""" 
+script example
+"""
+#inputFL="/Volumes/KOGES_MRI/MRI_Rawdata_repository/convert_file/2003459/137577_20150709/FLAIR.nii.gz"
+#inputT1="/Volumes/KOGES_MRI/DataRepository/20160928_KoGES_base_Results/KoGES/2003459/137577_20150709/TissueClassify/t1_average_BRAINSABC.nii.gz"
+#inputBinary="/Volumes/KOGES_MRI/DataRepository/20160928_KoGES_base_Results/KoGES/2003459/137577_20150709/JointFusion/JointFusion_HDAtlas20_2015_dustCleaned_label.nii.gz"
+#
+#python ~/src/BRAINS_FLAIRWorkflow/BRAINSTools/AutoWorkup/workflows/WMHFLAIRExtractCandidateROI.py \
+#            --inputFLVolume  $inputFL\
+#            --inputT1Volume $inputT1\
+#            --inputBrainLabelsMapImage $inputBinary\
+#            --program_paths /Users/eunyoungkim/src/NamicBuild_20180124/bin/\
+#            --processingType hyper \
+#            --inputIntensityReference /Users/eunyoungkim/src/NamicBuild_20171031/bin/Atlas/Atlas_20131115/template_t2_clipped.nii.gz\
+#            --python_aux_paths ".:/Users/eunyoungkim/src/BRAINS_FLAIRWorkflow/BRAINSTools/AutoWorkup/" \
+#            --cacheDir my_CACHE \
+#            --resultDir my_Result
+#
