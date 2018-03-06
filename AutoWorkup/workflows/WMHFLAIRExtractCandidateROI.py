@@ -15,23 +15,25 @@ Processing steps:
     2. Threshold T2-FLAIR
 
 Usage:
-  WMHFLAIRExtractCandidateROI.py --inputFLVolume inputFLVolume --inputT1Volume inputT1Volume --inputBrainLabelsMapImage BLMImage --program_paths PROGRAM_PATHS [--processingType hypo|hyper] [--inputIntensityReference inputIntensityReference] [--python_aux_paths PYTHON_AUX_PATHS] [--cacheDir CACHEDIR] [--resultDir RESULTDIR] [--outputPrefix outputPrefix]
+  WMHFLAIRExtractCandidateROI.py --inputFLVolume inputFLVolume --inputT1Volume inputT1Volume --inputBrainLabelsMapImage BLMImage --thresholdValue thresholdValue  --program_paths PROGRAM_PATHS [--processingType hypo|hyper] [--useIntensityReference=<BOOL>] [--inputIntensityReference inputIntensityReference] [--python_aux_paths PYTHON_AUX_PATHS] [--cacheDir cacheDir] [--resultDir resultDir] [--outputPrefix outputPrefix]
   WMHFLAIRExtractCandidateROI.py -v | --version
   WMHFLAIRExtractCandidateROI.py -h | --help
 
 Options:
   -h --help                                         Show this help and exit
   -v --version                                      Print the version and exit
-  --inputFLVolume inputFLVolume                         Path to the input MRI scan for further processing
-  --processingType processingType                   Either [hyper|hypo] (Default: hyper)
+  --inputFLVolume inputFLVolume                     Path to the input MRI scan for further processing
   --inputT1Volume inputT1Volume                     Path to the input T1 Volume
+  --thresholdValue thresholdValue                   A value for thresholding 
+  --processingType processingType                   Either [hyper|hypo] [default: hyper]
+  --useIntensityReference=BOOL                      useIntensityReference [default: False]
   --inputIntensityReference inputIntensityReference Path to the input Intensity Reference. Brain-Clipped T2 Image was used for testing.
   --inputBrainLabelsMapImage BLMImage               Path to the input brain labels map image
   --program_paths PROGRAM_PATHS                     Path to the directory where binary files are places
   --python_aux_paths PYTHON_AUX_PATHS               Path to the AutoWorkup directory
-  --cacheDir CACHEDIR                       Base directory that cache outputs of workflow will be written to (default: ./)
-  --resultDir RESULTDIR                             Outputs of dataSink will be written to a sub directory under the resultDir named by input scan outputPrefix(default: CACHEDIR)
-  --outputPrefix outputPrefix                       outputPrefix that can be used as an identifier and pre-fix for the output. (default: WMHFLAIRExtractCandidateROIOutput )
+  --cacheDir cacheDir                       Base directory that cache outputs of workflow will be written to [default: ./]
+  --resultDir resultDir                             Outputs of dataSink will be written to a sub directory under the resultDir named by input scan outputPrefix [default: cacheDir]
+  --outputPrefix outputPrefix                       outputPrefix that can be used as an identifier and pre-fix for the output. [default: WMHFLAIRExtractCandidateROIOutput]
 """
 from __future__ import print_function
 import os
@@ -101,7 +103,7 @@ def ClipVolumeWithBinaryMask(inputVolume, inputBinaryVolume, outputVolume):
     return outputVolume
 
 
-def _wmh_flairThreshold( outputPrefix, CACHEDIR, inputFLVolume, inputT1Volume, LabelMapImage, processingType, inputIntensityReference, thresholdList):
+def wmh_roiExtractor( processingType, resultDir ):
     import SimpleITK as sitk
     import nipype
     from nipype.interfaces import ants
@@ -118,22 +120,17 @@ def _wmh_flairThreshold( outputPrefix, CACHEDIR, inputFLVolume, inputT1Volume, L
     ####### Workflow ###################
     WFname = 'LesionDetector_' + outputPrefix
     LesionDetectorWF = pe.Workflow(name=WFname)
-    LesionDetectorWF.base_dir = CACHEDIR
     LesionDetectorWF.config['execution'] = {'remove_unnecessary_outputs': 'False',
                                             'hash_method': 'timestamp'}
     #
     # I/O Specification
     #
-    inputsSpec = pe.Node(interface=IdentityInterface(fields=['inputFLVolume', 'T1Volume',
-                                                             'inputIntensityReference', 'LabelMapVolume']),
+    inputsSpec = pe.Node(interface=IdentityInterface(fields=['inputFLVolume', 
+                                                             'inputT1Volume',
+                                                             'inputIntensityReference', 
+                                                             'inputBrainMask',
+                                                             'thresholdValue']),
                          name='inputspec')
-
-    inputsSpec.inputs.inputFLVolume = os.path.abspath( inputFLVolume )
-    inputsSpec.inputs.T1Volume = os.path.abspath( inputT1Volume )
-    inputsSpec.inputs.LabelMapVolume = os.path.abspath( LabelMapImage )
-    if inputIntensityReference:
-        inputsSpec.inputs.inputIntensityReference = os.path.abspath( inputIntensityReference )
-
 
     outputsSpec = pe.Node(interface=IdentityInterface(fields=['input2T1_transformed', 'input2T1_transform']),
                           name='outputsSpec')
@@ -192,7 +189,7 @@ def _wmh_flairThreshold( outputPrefix, CACHEDIR, inputFLVolume, inputT1Volume, L
     BFit_Input2T1.inputs.writeOutputTransformInFloat = True
     BFit_Input2T1.inputs.outputVolume = "DenoisedFLinT1.nii.gz"
 
-    LesionDetectorWF.connect(inputsSpec, 'T1Volume', BFit_Input2T1, 'fixedVolume')
+    LesionDetectorWF.connect(inputsSpec, 'inputT1Volume', BFit_Input2T1, 'fixedVolume')
     LesionDetectorWF.connect(N4BFC, 'output_image', BFit_Input2T1, 'movingVolume')
 
     LesionDetectorWF.connect( BFit_Input2T1, 'outputTransform',
@@ -201,7 +198,7 @@ def _wmh_flairThreshold( outputPrefix, CACHEDIR, inputFLVolume, inputT1Volume, L
                               outputsSpec, 'input2T1_transformed')
     ## Write all outputs with DataSink
     LesionDetectorDS = pe.Node(interface=nio.DataSink(), name='LDDataSink')
-    LesionDetectorDS.inputs.base_directory = RESULTDIR
+    LesionDetectorDS.inputs.base_directory = resultDir
     LesionDetectorDS.inputs.container = outputPrefix
 
     LesionDetectorWF.connect(BFit_Input2T1, 'outputTransform',
@@ -220,7 +217,7 @@ def _wmh_flairThreshold( outputPrefix, CACHEDIR, inputFLVolume, inputT1Volume, L
 
     LesionDetectorWF.connect( BFit_Input2T1, 'outputVolume',
                               BrainClip_Input, 'inputVolume')
-    LesionDetectorWF.connect( inputsSpec, 'LabelMapVolume',
+    LesionDetectorWF.connect( inputsSpec, 'inputBrainMask',
                               BrainClip_Input, 'inputBinaryVolume')
 
     ## Threshold
@@ -233,12 +230,16 @@ def _wmh_flairThreshold( outputPrefix, CACHEDIR, inputFLVolume, inputT1Volume, L
 
 
     ## Skull Striping Input
-    if( inputIntensityReference ):
+    if( useIntensityReference ):
         if processingType == "hyper" :
-            threshold.iterables = ( 'thresholdLower', thresholdList )
+            LesionDetectorWF.connect( inputsSpec, 'thresholdValue',
+                                      threshold, 'thresholdLower')
+            #threshold.iterables = ( 'thresholdLower', thresholdList )
             #threshold.iterables = ( 'thresholdLower', [0.3, 0.4, 0.45, 0.5] )
         else:
-            threshold.iterables = ( 'thresholdUpper', thresholdList )
+            LesionDetectorWF.connect( inputsSpec, 'thresholdValue',
+                                      threshold, 'thresholdUpper')
+            #threshold.iterables = ( 'thresholdUpper', thresholdList )
             #threshold.iterables = ( 'thresholdUpper', [025,0.26,0.27,0.28,0.29] )
         print( """
         *** Use the input Intensity Reference Volume for the Histogram Matching""")
@@ -257,10 +258,14 @@ def _wmh_flairThreshold( outputPrefix, CACHEDIR, inputFLVolume, inputT1Volume, L
 
     else:
         if processingType == "hyper" :
-            threshold.iterables = ( 'thresholdLower', thresholdList  )
+            LesionDetectorWF.connect( inputsSpec, 'thresholdValue',
+                                      threshold, 'thresholdLower')
+            #threshold.iterables = ( 'thresholdLower', thresholdList  )
             #threshold.iterables = ( 'thresholdLower', [0.7, 0.725, 0.75, 0.775, 0.8] )
         else:
-            threshold.iterables = ( 'thresholdUpper', thresholdList )
+            LesionDetectorWF.connect( inputsSpec, 'thresholdValue',
+                                      threshold, 'thresholdUpper')
+            #threshold.iterables = ( 'thresholdUpper', thresholdList )
             #threshold.iterables = ( 'thresholdUpper', [0.4, 0.45, 0.5] )
         print( """
         *** Use the Histogram Equalizer""")
@@ -306,8 +311,8 @@ def _wmh_flairThreshold( outputPrefix, CACHEDIR, inputFLVolume, inputT1Volume, L
                               LesionDetectorDS, 'Threshold.@inputFLAIR')
 
 
-    print("Running the workflow ...")
-    LesionDetectorWF.run()
+    print("Return the workflow ...")
+    return LesionDetectorWF
 
 # #####################################
 # Set up the environment, process command line options, and start processing
@@ -334,6 +339,8 @@ if __name__ == '__main__':
     inputT1Volume = argv['--inputT1Volume']
     assert os.path.exists(inputT1Volume), "Input T2 scan is not found: %s" % inputT1Volume
 
+    thresholdValue = argv['--thresholdValue']
+
     LabelMapImage = argv['--inputBrainLabelsMapImage']
     assert os.path.exists(LabelMapImage), "Input Brain labels map image is not found: %s" % LabelMapImage
 
@@ -345,9 +352,15 @@ if __name__ == '__main__':
     else:
         processingType = 'hyper'
 
+    if argv['--useIntensityReference'] != None:
+        useIntensityReference= argv['--useIntensityReference']
+    else:
+        useIntensityReference=False
+
     if argv['--inputIntensityReference'] != None:
         inputIntensityReference = argv['--inputIntensityReference']
         assert os.path.exists(inputIntensityReference), "Input Intensity Reference (E.g., Brain Clipped T2 Volume) scan is not found: %s" % inputIntensityReference
+        useIntensityReference = True
     else:
         inputIntensityReference = None
 
@@ -358,22 +371,22 @@ if __name__ == '__main__':
 
     if argv['--cacheDir'] == None:
         print("*** workflow cache directory is set to current working directory.")
-        CACHEDIR = os.getcwd()
+        cacheDir = os.getcwd()
     else:
-        CACHEDIR = os.path.abspath( argv['--cacheDir'] )
-        if not os.path.exists(CACHEDIR):
-            os.makedirs( CACHEDIR )
-        assert os.path.exists(CACHEDIR), "Cache directory is not found: %s" % CACHEDIR
+        cacheDir = os.path.abspath( argv['--cacheDir'] )
+        if not os.path.exists(cacheDir):
+            os.makedirs( cacheDir )
+        assert os.path.exists(cacheDir), "Cache directory is not found: %s" % cacheDir
 
     if argv['--resultDir'] == None:
         print("*** data sink result directory is set to the neighbor to the cache directory.")
-        RESULTDIR = os.path.join( os.path.dirname( os.path.abspath( CACHEDIR )), "LD_Result")
-        print("    :{0}".format( RESULTDIR ) )
+        resultDir = os.path.join( os.path.dirname( os.path.abspath( cacheDir )), "LD_Result")
+        print("    :{0}".format( resultDir ) )
     else:
-        RESULTDIR = os.path.abspath(argv['--resultDir'])
-        if not os.path.exists( RESULTDIR ):
-            os.makedirs( RESULTDIR )
-        assert os.path.exists(RESULTDIR), "Results directory is not found: %s" % RESULTDIR
+        resultDir = os.path.abspath(argv['--resultDir'])
+        if not os.path.exists( resultDir ):
+            os.makedirs( resultDir )
+        assert os.path.exists(resultDir), "Results directory is not found: %s" % resultDir
 
     if argv['--outputPrefix'] == None:
         print("*** output data prefix will be 'WMHFLAIRExtractCandidateROIOutput_'")
@@ -399,35 +412,37 @@ if __name__ == '__main__':
     sys.path = PYTHON_AUX_PATHS
 
 
-    exit = _wmh_flairThreshold(
-            outputPrefix,
-            CACHEDIR,
-            inputFLVolume,
-            inputT1Volume,
-            LabelMapImage,
-            processingType="hyper",
-            inputIntensityReference = "/Users/eunyoungkim/src/NamicBuild_20171031/bin/Atlas/Atlas_20131115/template_t2_clipped.nii.gz",
-            thresholdList = [0.3, 0.4, 0.45, 0.5],
-            )
-    sys.exit(exit)
+    import nipype.pipeline.engine as pe  # pypeline engine
+    from nipype.interfaces.utility import Merge, Split, Function, Rename, IdentityInterface
 
+    wmh_localWF =  wmh_roiExtractor( processingType, resultDir)
+    wmh_localWF.base_dir = cacheDir
 
+    wmh_localWF_inputspec = wmh_localWF.get_node('inputspec')
+    wmh_localWF_inputspec.inputs.inputFLVolume = inputFLVolume
+    wmh_localWF_inputspec.inputs.inputT1Volume = inputT1Volume
+    wmh_localWF_inputspec.inputs.inputIntensityReference = inputIntensityReference 
+    wmh_localWF_inputspec.inputs.inputBrainMask = LabelMapImage
+
+    wmh_localWF.run()
 
 """ 
 script example
 """
-#inputFL="/Volumes/KOGES_MRI/MRI_Rawdata_repository/convert_file/2003459/137577_20150709/FLAIR.nii.gz"
-#inputT1="/Volumes/KOGES_MRI/DataRepository/20160928_KoGES_base_Results/KoGES/2003459/137577_20150709/TissueClassify/t1_average_BRAINSABC.nii.gz"
-#inputBinary="/Volumes/KOGES_MRI/DataRepository/20160928_KoGES_base_Results/KoGES/2003459/137577_20150709/JointFusion/JointFusion_HDAtlas20_2015_dustCleaned_label.nii.gz"
-#
-#python ~/src/BRAINS_FLAIRWorkflow/BRAINSTools/AutoWorkup/workflows/WMHFLAIRExtractCandidateROI.py \
-#            --inputFLVolume  $inputFL\
-#            --inputT1Volume $inputT1\
-#            --inputBrainLabelsMapImage $inputBinary\
-#            --program_paths /Users/eunyoungkim/src/NamicBuild_20180124/bin/\
-#            --processingType hyper \
-#            --inputIntensityReference /Users/eunyoungkim/src/NamicBuild_20171031/bin/Atlas/Atlas_20131115/template_t2_clipped.nii.gz\
-#            --python_aux_paths ".:/Users/eunyoungkim/src/BRAINS_FLAIRWorkflow/BRAINSTools/AutoWorkup/" \
-#            --cacheDir my_CACHE \
-#            --resultDir my_Result
-#
+# inputFL="/Volumes/KOGES_MRI/MRI_Rawdata_repository/convert_file/2003459/137577_20150709/FLAIR.nii.gz"
+# inputT1="/Volumes/KOGES_MRI/DataRepository/20160928_KoGES_base_Results/KoGES/2003459/137577_20150709/TissueClassify/t1_average_BRAINSABC.nii.gz"
+# inputBinary="/Volumes/KOGES_MRI/DataRepository/20160928_KoGES_base_Results/KoGES/2003459/137577_20150709/JointFusion/JointFusion_HDAtlas20_2015_dustCleaned_label.nii.gz"
+# 
+# python ~/src/BRAINS_FLAIRWorkflow/BRAINSTools/AutoWorkup/workflows/WMHFLAIRExtractCandidateROI.py \
+#   --inputFLVolume  $inputFL\
+#   --inputT1Volume $inputT1\
+#   --thresholdValue 0.45\
+#   --inputBrainLabelsMapImage $inputBinary\
+#   --program_paths /Users/eunyoungkim/src/NamicBuild_20180124/bin/\
+#   --processingType hyper \
+#   --inputIntensityReference /Users/eunyoungkim/src/NamicBuild_20171031/bin/Atlas/Atlas_20131115/template_t2_clipped.nii.gz\
+#   --python_aux_paths ".:/Users/eunyoungkim/src/BRAINS_FLAIRWorkflow/BRAINSTools/AutoWorkup/" \
+#   --cacheDir my_CACHE \
+#   --resultDir my_Result
+
+
