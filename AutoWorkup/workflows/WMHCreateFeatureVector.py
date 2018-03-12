@@ -5,27 +5,20 @@ WMHCreateFeatureVector.py
 This program is used to generate a feature vector file, using "BRAINSCut --createVectors" option.
 
 Usage:
-  WMHCreateFeatureVector.py [--rewrite-datasinks]  --inputFLAIRVolume inputFLAIRVolume --inputT1Volume inputT1Volume --outputDirectory outputDirectory [--python_aux_paths python_aux_paths] [--inputOtherVolumes inputOtherVolumes]... 
+  WMHCreateFeatureVector.py   --inputFLAIRVolume inputFLAIRVolume --inputT1Volume inputT1Volume --outputDirectory outputDirectory [--python_aux_paths python_aux_paths] [--binary_paths binary_paths] [--inputOtherVolumes inputOtherVolumes]... 
   WMHCreateFeatureVector.py -v | --version
   WMHCreateFeatureVector.py -h | --help
-
-Arguments:
 
 Options:
   -h, --help                                   Show this help and exit
   -v, --version                                Print the version and exit
-  --rewrite-datasinks                          Turn on the Nipype option to overwrite all files in the 'results' directory
-  --inputFLAIRVolume  inputFLAIRVolume         FLAIR volume for white matter hyperintensity (WMH) feature extraction
-  --inputT1Volume     inputT1Volume            T1 volume for white matter hyperintensity (WMH) feature extraction
+  --inputFLAIRVolume inputFLAIRVolume          FLAIR volume for white matter hyperintensity (WMH) feature extraction
+  --inputT1Volume inputT1Volume                T1 volume for white matter hyperintensity (WMH) feature extraction
   --inputOtherVolumes inputOtherVolumes        Any other volumes for white matter hyperintensity (WMH) feature extraction
-  --outputDirectory   outputDirectory          Output directory 
-  --python_aux_paths  python_aux_paths         Python Aux path
+  --outputDirectory outputDirectory            Output directory 
+  --python_aux_paths python_aux_paths          Python Aux path
+  --binary_paths binary_paths                  Binary path to execute
 
-
-Examples:
-  $ WMHCreateFeatureVector.py
-  $ WMHCreateFeatureVector.py
-  $ WMHCreateFeatureVector.py
 
 """
 from __future__ import absolute_import
@@ -43,31 +36,39 @@ from nipype.interfaces.freesurfer import ReconAll
 from nipype.interfaces.semtools import GradientAnisotropicDiffusionImageFilter, BRAINSFit
 
 def getMeanVolume(inputFilename, outputFilename, radius=3):
-    inputVolume = sitk.ReadImage( inputFilename )
-    outputVolume = sitk.Mean( inputVolume, radius )
+    import SimpleITK as sitk
+    import os
+    inputVolume = sitk.ReadImage( inputFilename, sitk.sitkFloat32 )
+    outputVolume = sitk.Mean( inputVolume, [radius,radius,radius] )
 
     returnFilename = os.path.abspath( outputFilename ) 
     sitk.WriteImage( outputVolume, returnFilename)
     return returnFilename
 
 def getMaximumVolume(inputFilename, outputFilename, radius=3):
-    inputVolume = sitk.ReadImage( inputFilename )
-    outputVolume = sitk.Maximum( inputVolume, radius )
+    import SimpleITK as sitk
+    import os
+    inputVolume = sitk.ReadImage( inputFilename, sitk.sitkFloat32 )
+    outputVolume = sitk.Maximum( inputVolume, [radius, radius, radius])
     
     returnFilename = os.path.abspath( outputFilename ) 
     sitk.WriteImage( outputVolume, returnFilename)
     return returnFilename
 
 def getMinimumVolume(inputFilename, outputFilename, radius=3):
-    inputVolume = sitk.ReadImage( inputFilename )
-    outputVolume = sitk.Minimum( inputVolume, radius )
+    import SimpleITK as sitk
+    import os
+    inputVolume = sitk.ReadImage( inputFilename, sitk.sitkFloat32 )
+    outputVolume = sitk.Minimum( inputVolume, [radius, radius, radius] )
     
     returnFilename = os.path.abspath( outputFilename ) 
     sitk.WriteImage( outputVolume, returnFilename)
     return returnFilename
 
 def getCannyEdge(inputFilename, outputFilename):
-    inputVolume = sitk.ReadImage( inputFilename )
+    import SimpleITK as sitk
+    import os
+    inputVolume = sitk.ReadImage( inputFilename, sitk.sitkFloat32 )
     outputVolume = sitk.CannyEdgeDetection( inputVolume )
     
     returnFilename = os.path.abspath( outputFilename ) 
@@ -75,23 +76,39 @@ def getCannyEdge(inputFilename, outputFilename):
     return returnFilename
 
 def getGradientMagnitude(inputFilename, outputFilename):
-    inputVolume = sitk.ReadImage( inputFilename )
+    import SimpleITK as sitk
+    import os
+    inputVolume = sitk.ReadImage( inputFilename, sitk.sitkFloat32 )
     outputVolume = sitk.GradientMagnitudeRecursiveGaussian( inputVolume )
     
     returnFilename = os.path.abspath( outputFilename ) 
     sitk.WriteImage( outputVolume, returnFilename)
     return returnFilename
 
+def getEdgePotential(inputFilename, outputFilename):
+    import SimpleITK as sitk
+    import os
+    inputVolume = sitk.ReadImage( inputFilename, sitk.sitkUInt16 )
+    outputVolume = sitk.EdgePotential( inputVolume )
+    
+    returnFilename = os.path.abspath( outputFilename ) 
+    sitk.WriteImage( outputVolume, returnFilename)
+    return returnFilename
+
 def getSobelEdge(inputFilename, outputFilename):
-    inputVolume = sitk.ReadImage( inputFilename )
-    outputVolume = sitk.CannyEdgeDetection( inputVolume )
+    import SimpleITK as sitk
+    import os
+    inputVolume = sitk.ReadImage( inputFilename, sitk.sitkFloat32 )
+    outputVolume = sitk.SobelEdgeDetection( inputVolume )
     
     returnFilename = os.path.abspath( outputFilename ) 
     sitk.WriteImage( outputVolume, returnFilename)
     return returnFilename
 
 def getZeroCrossingEdge(inputFilename, outputFilename):
-    inputVolume = sitk.ReadImage( inputFilename )
+    import SimpleITK as sitk
+    import os
+    inputVolume = sitk.ReadImage( inputFilename, sitk.sitkFloat32 )
     outputVolume = sitk.ZeroCrossingBasedEdgeDetection( inputVolume )
     
     returnFilename = os.path.abspath( outputFilename ) 
@@ -99,8 +116,10 @@ def getZeroCrossingEdge(inputFilename, outputFilename):
     return returnFilename
 
 def getSquaredDifference(inputFilename1, inputFilename2, outputFilename):
-    inputVolume1 = sitk.ReadImage( inputFilename1 )
-    inputVolume2 = sitk.ReadImage( inputFilename2 )
+    import SimpleITK as sitk
+    import os
+    inputVolume1 = sitk.ReadImage( inputFilename1, sitk.sitkFloat32 )
+    inputVolume2 = sitk.ReadImage( inputFilename2, sitk.sitkFloat32 )
     outputVolume = sitk.SquaredDifference( inputVolume1, 
                                            inputVolume2)
     
@@ -130,7 +149,8 @@ def generate1stFeatureVolumeWF( inputVolumeList, outputDirectory ):
     WFname = 'genFeatureWF'
     genFeatureWF = pe.Workflow(name=WFname)
     genFeatureWF.config['execution'] = {'remove_unnecessary_outputs': 'False',
-                                        'hash_method': 'timestamp'}
+                                        'hash_method': 'timestamp',
+                                        'overwrite':'True'}
     """
     input spec TODO: may not be needed
     """
@@ -149,96 +169,76 @@ def generate1stFeatureVolumeWF( inputVolumeList, outputDirectory ):
     DenoiseInput.inputs.numberOfIterations = denosingIteration
     DenoiseInput.inputs.outputVolume = "DenoiseInput.nii.gz"
 
-    DenoiseInput.interables( 'inputVolume', inputVolumeList.values() )
+    print( inputVolumeList )
+    DenoiseInput.iterables = ( 'inputVolume', inputVolumeList )
 
     """
     Mean
     """
-    meanFeatureNode = pe.Node(interface=Function(['inputVolume', 'radius', 'outputFilename'],
+    meanFeatureNode = pe.Node(interface=Function(['inputFilename', 'radius', 'outputFilename'],
                                                  ['outputVolume'],
                                                  function=getMeanVolume),
                               name="meanFeatureNode")
     meanFeatureNode.inputs.outputFilename = 'outputMeanVolume.nii.gz'
     meanFeatureNode.inputs.radius= 3 
-    cutWF.connect( DenoiseInput, 'outputVolume',
-                   meanFeatureNode, 'inputVolume')
-    """
-    Max 
-    """
-    maximumFeatureNode = pe.Node(interface=Function(['inputVolume', 'radius', 'outputFilename'],
-                                                    ['outputVolume'],
-                                                 function=getMaximumVolume),
-                              name="maximumFeatureNode")
-    maximumFeatureNode.inputs.outputFilename = 'outputMaximumVolume.nii.gz'
-    maximumFeatureNode.inputs.radius= 3 
-    cutWF.connect( DenoiseInput, 'outputVolume',
-                   maximumFeatureNode, 'inputVolume')
-    """
-    Min
-    """
-    minimumFeatureNode = pe.Node(interface=Function(['inputVolume', 'radius', 'outputFilename'],
-                                                    ['outputVolume'],
-                                                    function=getCannyEdge()),
-                              name="minimumFeatureNode")
-    minimumFeatureNode.inputs.outputFilename = 'outputMinimumVolume.nii.gz'
-    minimumFeatureNode.inputs.radius= 3 
-    cutWF.connect( DenoiseInput, 'outputVolume',
-                   minimumFeatureNode, 'inputVolume')
-
+    genFeatureWF.connect( DenoiseInput, 'outputVolume',
+                   meanFeatureNode, 'inputFilename')
     """
     Grad. Mag.
     """
-    GMFeatureNode = pe.Node(interface=Function(['inputVolume', 'radius', 'outputFilename'],
+    GMFeatureNode = pe.Node(interface=Function(['inputFilename', 'outputFilename'],
                                                 ['outputVolume'],
-                                                function=getGradientMagnitude()),
+                                                function=getGradientMagnitude),
                               name="GMFeatureNode")
     GMFeatureNode.inputs.outputFilename = 'outputGradMagVolume.nii.gz'
-    cutWF.connect( DenoiseInput, 'outputVolume',
-                   GMFeatureNode, 'inputVolume')
+    genFeatureWF.connect( DenoiseInput, 'outputVolume',
+                   GMFeatureNode, 'inputFilename')
     
     """
     Edge Potential
     """
-    EdgePotentialFeatureNode = pe.Node(interface=Function(['inputVolume', 'outputFilename'],
-                                                ['outputMinimumFilename'],
-                                                function=getGradientMagnitude()),
+    """
+    EdgePotentialFeatureNode = pe.Node(interface=Function(['inputFilename', 'outputFilename'],
+                                                          ['outputVolume'],
+                                                 function=getEdgePotential),
                               name="EdgePotentialFeatureNode")
     EdgePotentialFeatureNode.inputs.outputFilename = 'outputEdgePotentialVolume.nii.gz'
-    cutWF.connect( DenoiseInput, 'outputVolume',
-                   EdgePotentialFeatureNode, 'inputVolume')
+    genFeatureWF.connect( GMFeatureNode, 'outputVolume',
+                          EdgePotentialFeatureNode, 'inputFilename')
+    """
 
     """
     Canny
     """
-    cannyNode = pe.Node(interface=Function(['inputVolume', 'outputFilename'],
+    cannyNode = pe.Node(interface=Function(['inputFilename', 'outputFilename'],
                                            ['outputEdgeFilename'],
                                            function=getCannyEdge),
                               name="cannyNode")
     cannyNode.inputs.outputFilename = 'outputCannyEdgeVolume.nii.gz'
-    cutWF.connect( DenoiseInput, 'outputVolume',
-                   cannyNode, 'inputVolume')
+    genFeatureWF.connect( DenoiseInput, 'outputVolume',
+                   cannyNode, 'inputFilename')
 
     """
     Sobel 
     """
-    sobelNode = pe.Node(interface=Function(['inputVolume', 'outputFilename'],
+    sobelNode = pe.Node(interface=Function(['inputFilename', 'outputFilename'],
                                            ['outputEdgeFilename'],
                                            function=getSobelEdge),
                               name="sobelNode")
     sobelNode.inputs.outputFilename = 'outputSobelEdgeVolume.nii.gz'
-    cutWF.connect( DenoiseInput, 'outputVolume',
-                   sobelNode, 'inputVolume')
+    genFeatureWF.connect( DenoiseInput, 'outputVolume',
+                   sobelNode, 'inputFilename')
 
     """
     Zero Crossing
     """
-    zeroCrossingNode = pe.Node(interface=Function(['inputVolume', 'outputFilename'],
+    zeroCrossingNode = pe.Node(interface=Function(['inputFilename', 'outputFilename'],
                                               ['outputEdgeFilename'],
                                               function=getZeroCrossingEdge),
                                name="zeroCrossingNode")
     zeroCrossingNode.inputs.outputFilename = 'outputZeroCrossingEdgeEdgeVolume.nii.gz'
-    cutWF.connect( DenoiseInput, 'outputVolume',
-                   zeroCrossingNode, 'inputVolume')
+    genFeatureWF.connect( DenoiseInput, 'outputVolume',
+                   zeroCrossingNode, 'inputFilename')
 
     return genFeatureWF
 
@@ -297,17 +297,23 @@ if __name__ == '__main__':
     print(argv)
     print('=' * 100)
 
-    PYTHON_AUX_PATH = argv['--python_aux_path']
+    PYTHON_AUX_PATHS= argv['--python_aux_paths']
     PYTHON_AUX_PATHS = PYTHON_AUX_PATHS.split(':')
     PYTHON_AUX_PATHS.extend(sys.path)
     sys.path = PYTHON_AUX_PATHS
     
+    PROGRAM_PATHS = argv['--binary_paths'] 
+    PROGRAM_PATHS = PROGRAM_PATHS.split(':')
+    PROGRAM_PATHS.extend(os.environ['PATH'].split(':'))
+    os.environ['PATH'] = ':'.join(PROGRAM_PATHS)
+
     inputFLAIRVolume = os.path.abspath( argv['--inputFLAIRVolume'])
     inputT1Volume = os.path.abspath( argv['--inputT1Volume'])
     outputDirectory = os.path.abspath( argv['--outputDirectory'])
 
     inputF1VolList = []
-    inputF1VolList.append( [inputFLAIRVolume, inputT1Volume] )
+    inputF1VolList.append( inputFLAIRVolume )
+    inputF1VolList.append( inputT1Volume )
     
     if argv['--inputOtherVolumes']:
         for fn in argv['--inputOtherVolumes']:
@@ -320,5 +326,7 @@ if __name__ == '__main__':
                                                    outputDirectory)
     local_feature1WF.base_dir = outputDirectory.rstrip('/')  + '_CACHE'
     local_feature1WF.run()
+
+
      
 
