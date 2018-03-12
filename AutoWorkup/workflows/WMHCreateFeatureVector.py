@@ -5,7 +5,7 @@ WMHCreateFeatureVector.py
 This program is used to generate a feature vector file, using "BRAINSCut --createVectors" option.
 
 Usage:
-  WMHCreateFeatureVector.py [--rewrite-datasinks]  --inputFLAIR inputFLAIRVolume --inputReference inputReferenceVolume --inputT1Volume inputT1Volume 
+  WMHCreateFeatureVector.py [--rewrite-datasinks]  --inputFLAIRVolume inputFLAIRVolume --inputT1Volume inputT1Volume --outputDirectory outputDirectory [--python_aux_paths python_aux_paths] [--inputOtherVolumes inputOtherVolumes]... 
   WMHCreateFeatureVector.py -v | --version
   WMHCreateFeatureVector.py -h | --help
 
@@ -15,8 +15,11 @@ Options:
   -h, --help                                   Show this help and exit
   -v, --version                                Print the version and exit
   --rewrite-datasinks                          Turn on the Nipype option to overwrite all files in the 'results' directory
-  --inputFLAIR inputFLAIRVolume                FLAIR volume for white matter hyperintensity (WMH) feature extraction
-  --inputT1Volume inputT1Volume                T1 volume for white matter hyperintensity (WMH) feature extraction
+  --inputFLAIRVolume  inputFLAIRVolume         FLAIR volume for white matter hyperintensity (WMH) feature extraction
+  --inputT1Volume     inputT1Volume            T1 volume for white matter hyperintensity (WMH) feature extraction
+  --inputOtherVolumes inputOtherVolumes        Any other volumes for white matter hyperintensity (WMH) feature extraction
+  --outputDirectory   outputDirectory          Output directory 
+  --python_aux_paths  python_aux_paths         Python Aux path
 
 
 Examples:
@@ -38,8 +41,6 @@ import nipype.interfaces.io as nio   # Data i/oS
 import nipype.pipeline.engine as pe  # pypeline engine
 from nipype.interfaces.freesurfer import ReconAll
 from nipype.interfaces.semtools import GradientAnisotropicDiffusionImageFilter, BRAINSFit
-
-from utilities.distributed import modify_qsub_args
 
 def getMeanVolume(inputFilename, outputFilename, radius=3):
     inputVolume = sitk.ReadImage( inputFilename )
@@ -89,6 +90,14 @@ def getSobelEdge(inputFilename, outputFilename):
     sitk.WriteImage( outputVolume, returnFilename)
     return returnFilename
 
+def getZeroCrossingEdge(inputFilename, outputFilename):
+    inputVolume = sitk.ReadImage( inputFilename )
+    outputVolume = sitk.ZeroCrossingBasedEdgeDetection( inputVolume )
+    
+    returnFilename = os.path.abspath( outputFilename ) 
+    sitk.WriteImage( outputVolume, returnFilename)
+    return returnFilename
+
 def getSquaredDifference(inputFilename1, inputFilename2, outputFilename):
     inputVolume1 = sitk.ReadImage( inputFilename1 )
     inputVolume2 = sitk.ReadImage( inputFilename2 )
@@ -99,8 +108,8 @@ def getSquaredDifference(inputFilename1, inputFilename2, outputFilename):
     sitk.WriteImage( outputVolume, returnFilename)
     return returnFilename
 
-def generate1stFeatureVolumeWF( inputVolumeDict ):
-    print("generateFeatureVolumeWF starts...")
+def generate1stFeatureVolumeWF( inputVolumeList, outputDirectory ):
+    print("generate1stFeatureVolumeWF starts...")
 
     import SimpleITK as sitk
     import nipype
@@ -140,7 +149,7 @@ def generate1stFeatureVolumeWF( inputVolumeDict ):
     DenoiseInput.inputs.numberOfIterations = denosingIteration
     DenoiseInput.inputs.outputVolume = "DenoiseInput.nii.gz"
 
-    DenoiseInput.interables( 'inputVolume', inputVolumeDict.values() )
+    DenoiseInput.interables( 'inputVolume', inputVolumeList.values() )
 
     """
     Mean
@@ -203,7 +212,7 @@ def generate1stFeatureVolumeWF( inputVolumeDict ):
     """
     cannyNode = pe.Node(interface=Function(['inputVolume', 'outputFilename'],
                                            ['outputEdgeFilename'],
-                                           function=getMinimumVolume),
+                                           function=getCannyEdge),
                               name="cannyNode")
     cannyNode.inputs.outputFilename = 'outputCannyEdgeVolume.nii.gz'
     cutWF.connect( DenoiseInput, 'outputVolume',
@@ -214,27 +223,66 @@ def generate1stFeatureVolumeWF( inputVolumeDict ):
     """
     sobelNode = pe.Node(interface=Function(['inputVolume', 'outputFilename'],
                                            ['outputEdgeFilename'],
-                                           function=getMinimumVolume),
+                                           function=getSobelEdge),
                               name="sobelNode")
     sobelNode.inputs.outputFilename = 'outputSobelEdgeVolume.nii.gz'
     cutWF.connect( DenoiseInput, 'outputVolume',
                    sobelNode, 'inputVolume')
+
+    """
+    Zero Crossing
+    """
+    zeroCrossingNode = pe.Node(interface=Function(['inputVolume', 'outputFilename'],
+                                              ['outputEdgeFilename'],
+                                              function=getZeroCrossingEdge),
+                               name="zeroCrossingNode")
+    zeroCrossingNode.inputs.outputFilename = 'outputZeroCrossingEdgeEdgeVolume.nii.gz'
+    cutWF.connect( DenoiseInput, 'outputVolume',
+                   zeroCrossingNode, 'inputVolume')
+
     return genFeatureWF
 
-def generate2ndFeatures( featureVolumeDict )
-    """
-    SG
-    """
-    # Sum the gradient images for BRAINSCut
+def generate2ndFeatures( inputVolume1, inputVolume2):
+
     WFname = "gen2ndFeatureWF"
     gen2ndFeatureWF = pe.Workflow(name=WFname)
-    gen2ndFeatureWF.config['execution'] = {'remove_unnecessary_outputs':'False',
+    gen2ndFeatureWF.config['execution'] = {'remove_unnecessary_outputs':'True',
                                            'hash_method':'timestamp'}
 
+    """
+    Denoised input for Feature Creation
+    """
+    denosingTimeStep = 0.0625
+    denosingConductance = 0.4
+    denosingIteration = 5
+
+    DenoiseInput1 = pe.Node(interface=GradientAnisotropicDiffusionImageFilter(), name="DenoiseInput1")
+    DenoiseInput1.inputs.timeStep = denosingTimeStep
+    DenoiseInput1.inputs.conductance = denosingConductance
+    DenoiseInput1.inputs.numberOfIterations = denosingIteration
+    DenoiseInput1.inputs.outputVolume = "DenoiseInput1.nii.gz"
+    DenoiseInput1.inputs.inputVolume = inputVolume1
+
+
+    DenoiseInput2 = pe.Node(interface=GradientAnisotropicDiffusionImageFilter(), name="DenoiseInput2")
+    DenoiseInput2.inputs.timeStep = denosingTimeStep
+    DenoiseInput2.inputs.conductance = denosingConductance
+    DenoiseInput2.inputs.numberOfIterations = denosingIteration
+    DenoiseInput2.inputs.outputVolume = "DenoiseInput2.nii.gz"
+    DenoiseInput2.inputs.inputVolume = inputVolume2
+
+    """
+    Summed Gradient
+    """
     SGI = pe.Node(interface=GenerateSummedGradientImage(), name="SGI")
     SGI.inputs.outputFileName = "SummedGradImage.nii.gz"
-    SGI.inputs.inputVolume1 = featureVolumeDict['T1']
-    SGI.inputs.inputVolume2 = featureVolumeDict['FL']
+    gen2ndFeatureWF.connect( DenoiseInput1, 'inputVolume1',
+                             SGI, 'inputVolume1')
+    gen2ndFeatureWF.connect( DenoiseInput2, 'inputVolume2',
+                             SGI, 'inputVolume2')
+
+    return gen2ndFeatureWF
+
 
 
 # #####################################
@@ -243,10 +291,34 @@ def generate2ndFeatures( featureVolumeDict )
 if __name__ == '__main__':
     import sys
     import os
-
     from docopt import docopt
-
+    
     argv = docopt(__doc__, version='1.1')
     print(argv)
     print('=' * 100)
+
+    PYTHON_AUX_PATH = argv['--python_aux_path']
+    PYTHON_AUX_PATHS = PYTHON_AUX_PATHS.split(':')
+    PYTHON_AUX_PATHS.extend(sys.path)
+    sys.path = PYTHON_AUX_PATHS
+    
+    inputFLAIRVolume = os.path.abspath( argv['--inputFLAIRVolume'])
+    inputT1Volume = os.path.abspath( argv['--inputT1Volume'])
+    outputDirectory = os.path.abspath( argv['--outputDirectory'])
+
+    inputF1VolList = []
+    inputF1VolList.append( [inputFLAIRVolume, inputT1Volume] )
+    
+    if argv['--inputOtherVolumes']:
+        for fn in argv['--inputOtherVolumes']:
+            inputF1VolList.append( os.path.abspath( fn ))
+
+    print( "input Volumes:")
+    print( inputF1VolList )
+
+    local_feature1WF = generate1stFeatureVolumeWF( inputF1VolList,
+                                                   outputDirectory)
+    local_feature1WF.base_dir = outputDirectory.rstrip('/')  + '_CACHE'
+    local_feature1WF.run()
+     
 
