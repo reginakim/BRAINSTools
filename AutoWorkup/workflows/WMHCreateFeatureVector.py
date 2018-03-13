@@ -30,10 +30,10 @@ from nipype.interfaces import ants
 from nipype.interfaces.base import CommandLine, CommandLineInputSpec, TraitedSpec, File, Directory
 from nipype.interfaces.base import traits, isdefined, BaseInterface
 from nipype.interfaces.utility import Merge, Split, Function, Rename, IdentityInterface
-import nipype.interfaces.io as nio   # Data i/oS
+#import nipype.interfaces.io as nio   # Data i/oS
 import nipype.pipeline.engine as pe  # pypeline engine
-from nipype.interfaces.freesurfer import ReconAll
-from nipype.interfaces.semtools import GradientAnisotropicDiffusionImageFilter, BRAINSFit
+#from nipype.interfaces.freesurfer import ReconAll
+#from nipype.interfaces.semtools import GradientAnisotropicDiffusionImageFilter, BRAINSFit
 
 def getMeanVolume(inputFilename, outputFilename, radius=3):
     import SimpleITK as sitk
@@ -127,8 +127,8 @@ def getSquaredDifference(inputFilename1, inputFilename2, outputFilename):
     sitk.WriteImage( outputVolume, returnFilename)
     return returnFilename
 
-def generate1stFeatureVolumeWF( inputVolumeList, outputDirectory ):
-    print("generate1stFeatureVolumeWF starts...")
+def generate1stFeatures( inputVolumeList, outputDirectory ):
+    print("generate1stFeatures starts...")
 
     import SimpleITK as sitk
     import nipype
@@ -139,7 +139,7 @@ def generate1stFeatureVolumeWF( inputVolumeList, outputDirectory ):
     import nipype.interfaces.io as nio   # Data i/oS
     import nipype.pipeline.engine as pe  # pypeline engine
     from nipype.interfaces.freesurfer import ReconAll
-    from nipype.interfaces.semtools import GradientAnisotropicDiffusionImageFilter, BRAINSFit
+    from nipype.interfaces.semtools import GradientAnisotropicDiffusionImageFilter, BRAINSFit, GenerateSummedGradientImage
 
     from utilities.distributed import modify_qsub_args
 
@@ -151,6 +151,16 @@ def generate1stFeatureVolumeWF( inputVolumeList, outputDirectory ):
     genFeatureWF.config['execution'] = {'remove_unnecessary_outputs': 'False',
                                         'hash_method': 'timestamp',
                                         'overwrite':'True'}
+    """
+    DataSink 
+    """
+    DS = pe.Node( nio.DataSink(), name='sinker')
+    DS.inputs.base_directory=  outputDirectory 
+    DS.inputs.regexp_substitutions = [ (r'genFeatureWF/',r''),
+                                       (r'_inputVolume_.*\.\.',r''),
+                                       (r'.nii.gz/',r'_'),
+                                       (r'Node/',r'_')]
+    
     """
     input spec TODO: may not be needed
     """
@@ -179,10 +189,13 @@ def generate1stFeatureVolumeWF( inputVolumeList, outputDirectory ):
                                                  ['outputVolume'],
                                                  function=getMeanVolume),
                               name="meanFeatureNode")
-    meanFeatureNode.inputs.outputFilename = 'outputMeanVolume.nii.gz'
+    meanFeatureNode.inputs.outputFilename = 'featureMean.nii.gz'
     meanFeatureNode.inputs.radius= 3 
     genFeatureWF.connect( DenoiseInput, 'outputVolume',
                    meanFeatureNode, 'inputFilename')
+
+    genFeatureWF.connect( meanFeatureNode, 'outputVolume',
+                          DS, '@meanFeature')
     """
     Grad. Mag.
     """
@@ -190,9 +203,11 @@ def generate1stFeatureVolumeWF( inputVolumeList, outputDirectory ):
                                                 ['outputVolume'],
                                                 function=getGradientMagnitude),
                               name="GMFeatureNode")
-    GMFeatureNode.inputs.outputFilename = 'outputGradMagVolume.nii.gz'
+    GMFeatureNode.inputs.outputFilename = 'featureGradMag.nii.gz'
     genFeatureWF.connect( DenoiseInput, 'outputVolume',
                    GMFeatureNode, 'inputFilename')
+    genFeatureWF.connect( GMFeatureNode, 'outputVolume',
+                          DS, '@GMFeature')
     
     """
     Edge Potential
@@ -214,9 +229,11 @@ def generate1stFeatureVolumeWF( inputVolumeList, outputDirectory ):
                                            ['outputEdgeFilename'],
                                            function=getCannyEdge),
                               name="cannyNode")
-    cannyNode.inputs.outputFilename = 'outputCannyEdgeVolume.nii.gz'
+    cannyNode.inputs.outputFilename = 'featureCannyEdge.nii.gz'
     genFeatureWF.connect( DenoiseInput, 'outputVolume',
                    cannyNode, 'inputFilename')
+    genFeatureWF.connect( cannyNode, 'outputEdgeFilename',
+                          DS, '@CannyFeature')
 
     """
     Sobel 
@@ -225,9 +242,11 @@ def generate1stFeatureVolumeWF( inputVolumeList, outputDirectory ):
                                            ['outputEdgeFilename'],
                                            function=getSobelEdge),
                               name="sobelNode")
-    sobelNode.inputs.outputFilename = 'outputSobelEdgeVolume.nii.gz'
+    sobelNode.inputs.outputFilename = 'featureSobelEdge.nii.gz'
     genFeatureWF.connect( DenoiseInput, 'outputVolume',
                    sobelNode, 'inputFilename')
+    genFeatureWF.connect( sobelNode, 'outputEdgeFilename',
+                          DS, '@SobelFeature')
 
     """
     Zero Crossing
@@ -236,19 +255,47 @@ def generate1stFeatureVolumeWF( inputVolumeList, outputDirectory ):
                                               ['outputEdgeFilename'],
                                               function=getZeroCrossingEdge),
                                name="zeroCrossingNode")
-    zeroCrossingNode.inputs.outputFilename = 'outputZeroCrossingEdgeEdgeVolume.nii.gz'
+    zeroCrossingNode.inputs.outputFilename = 'featureZeroCrossingEdge.nii.gz'
     genFeatureWF.connect( DenoiseInput, 'outputVolume',
                    zeroCrossingNode, 'inputFilename')
+    genFeatureWF.connect( zeroCrossingNode, 'outputEdgeFilename',
+                          DS, '@ZeroCrossingFeature')
 
+
+    """
+    Variance
+    """
+    varFeatureNode = pe.Node(interface=Function(['inputFilename1', 'inputFilename2', 'outputFilename'],
+                                                ['outputFilename'],
+                                                function=getSquaredDifference),
+                             name="varFeatureNode")
+    varFeatureNode.inputs.outputFilename = 'featureVariance.nii.gz'
+    genFeatureWF.connect( DenoiseInput, 'outputVolume',
+                          varFeatureNode, 'inputFilename1')
+    genFeatureWF.connect( meanFeatureNode, 'outputVolume',
+                          varFeatureNode, 'inputFilename2')
+    genFeatureWF.connect( varFeatureNode, 'outputFilename',
+                          DS, '@SGIFeature')
     return genFeatureWF
 
-def generate2ndFeatures( inputVolume1, inputVolume2):
+def generate2ndFeatures( inputVolume1, inputVolume2, outputDirectory):
 
+    from nipype.interfaces.semtools import GradientAnisotropicDiffusionImageFilter, BRAINSFit, GenerateSummedGradientImage
     WFname = "gen2ndFeatureWF"
     gen2ndFeatureWF = pe.Workflow(name=WFname)
     gen2ndFeatureWF.config['execution'] = {'remove_unnecessary_outputs':'True',
                                            'hash_method':'timestamp'}
 
+    """
+    DataSink 
+    """
+    import nipype.interfaces.io as nio   # Data i/oS
+    DS = pe.Node( nio.DataSink(), name='sinker')
+    DS.inputs.base_directory=  outputDirectory 
+    DS.inputs.regexp_substitutions = [ (r'gen2ndFeatureWF/',r''),
+                                       (r'_inputVolume_.*\.\.',r''),
+                                       (r'.nii.gz/',r'_'),
+                                       (r'Node/',r'_')]
     """
     Denoised input for Feature Creation
     """
@@ -276,10 +323,14 @@ def generate2ndFeatures( inputVolume1, inputVolume2):
     """
     SGI = pe.Node(interface=GenerateSummedGradientImage(), name="SGI")
     SGI.inputs.outputFileName = "SummedGradImage.nii.gz"
-    gen2ndFeatureWF.connect( DenoiseInput1, 'inputVolume1',
+    gen2ndFeatureWF.connect( DenoiseInput1, 'outputVolume',
                              SGI, 'inputVolume1')
-    gen2ndFeatureWF.connect( DenoiseInput2, 'inputVolume2',
+    gen2ndFeatureWF.connect( DenoiseInput2, 'outputVolume',
                              SGI, 'inputVolume2')
+    
+    gen2ndFeatureWF.connect( SGI, 'outputFileName',
+                             DS, '@SGFeature')
+  
 
     return gen2ndFeatureWF
 
@@ -322,11 +373,20 @@ if __name__ == '__main__':
     print( "input Volumes:")
     print( inputF1VolList )
 
-    local_feature1WF = generate1stFeatureVolumeWF( inputF1VolList,
-                                                   outputDirectory)
+    """
+    1st Features
+    """
+    local_feature1WF = generate1stFeatures( inputF1VolList,
+                                            outputDirectory)
     local_feature1WF.base_dir = outputDirectory.rstrip('/')  + '_CACHE'
     local_feature1WF.run()
 
 
-     
-
+    """
+    2nd Features
+    """
+    local_feature2WF = generate2ndFeatures( inputFLAIRVolume,
+                                            inputT1Volume,
+                                            outputDirectory)
+    local_feature2WF.base_dir = outputDirectory.rstrip('/')  + '_CACHE'
+    local_feature2WF.run()
