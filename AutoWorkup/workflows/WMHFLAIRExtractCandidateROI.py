@@ -7,7 +7,7 @@ input:
     T2-FLAIR Image
     T1(Reference) volume
     Brain mask (labelmap) volume
-output (to resultDir):
+output (to outputDirectory):
     output mask file
     co-registered input FL image (?)
 Processing steps:
@@ -15,7 +15,7 @@ Processing steps:
     2. Threshold T2-FLAIR
 
 Usage:
-  WMHFLAIRExtractCandidateROI.py --inputFLVolume inputFLVolume --inputT1Volume inputT1Volume --inputBrainLabelsMapImage BLMImage --thresholdValue thresholdValue  --program_paths PROGRAM_PATHS [--processingType hypo|hyper] [--useIntensityReference=<BOOL>] [--inputIntensityReference inputIntensityReference] [--python_aux_paths PYTHON_AUX_PATHS] [--cacheDir cacheDir] [--resultDir resultDir] [--outputPrefix outputPrefix]
+  WMHFLAIRExtractCandidateROI.py --inputFLVolume inputFLVolume --inputT1Volume inputT1Volume --inputBrainLabelsMapImage BLMImage --thresholdValue thresholdValue  --program_paths PROGRAM_PATHS [--processingType hypo|hyper] [--useIntensityReference=<BOOL>] [--inputIntensityReference inputIntensityReference] [--python_aux_paths PYTHON_AUX_PATHS] [--cacheDir cacheDir] [--outputDirectory outputDirectory] 
   WMHFLAIRExtractCandidateROI.py -v | --version
   WMHFLAIRExtractCandidateROI.py -h | --help
 
@@ -32,8 +32,7 @@ Options:
   --program_paths PROGRAM_PATHS                     Path to the directory where binary files are places
   --python_aux_paths PYTHON_AUX_PATHS               Path to the AutoWorkup directory
   --cacheDir cacheDir                       Base directory that cache outputs of workflow will be written to [default: ./]
-  --resultDir resultDir                             Outputs of dataSink will be written to a sub directory under the resultDir named by input scan outputPrefix [default: cacheDir]
-  --outputPrefix outputPrefix                       outputPrefix that can be used as an identifier and pre-fix for the output. [default: WMHFLAIRExtractCandidateROIOutput]
+  --outputDirectory outputDirectory                             Outputs of dataSink will be written to a sub directory under the outputDirectory  [default: cacheDir]
 """
 from __future__ import print_function
 import os
@@ -103,7 +102,7 @@ def ClipVolumeWithBinaryMask(inputVolume, inputBinaryVolume, outputVolume):
     return outputVolume
 
 
-def wmh_roiExtractor( processingType, resultDir ):
+def wmh_roiExtractor( processingType, outputDirectory ):
     import SimpleITK as sitk
     import nipype
     from nipype.interfaces import ants
@@ -118,7 +117,7 @@ def wmh_roiExtractor( processingType, resultDir ):
     from utilities.distributed import modify_qsub_args
     #\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
     ####### Workflow ###################
-    WFname = 'LesionDetector_' + outputPrefix
+    WFname = 'LesionDetector'  
     LesionDetectorWF = pe.Workflow(name=WFname)
     LesionDetectorWF.config['execution'] = {'remove_unnecessary_outputs': 'False',
                                             'hash_method': 'timestamp'}
@@ -198,8 +197,8 @@ def wmh_roiExtractor( processingType, resultDir ):
                               outputsSpec, 'input2T1_transformed')
     ## Write all outputs with DataSink
     LesionDetectorDS = pe.Node(interface=nio.DataSink(), name='LDDataSink')
-    LesionDetectorDS.inputs.base_directory = resultDir
-    LesionDetectorDS.inputs.container = outputPrefix
+    LesionDetectorDS.inputs.base_directory = outputDirectory
+    #LesionDetectorDS.inputs.container = outputPrefix
 
     LesionDetectorWF.connect(BFit_Input2T1, 'outputTransform',
                              LesionDetectorDS, 'Transform.@input2T1_transform')
@@ -378,21 +377,16 @@ if __name__ == '__main__':
             os.makedirs( cacheDir )
         assert os.path.exists(cacheDir), "Cache directory is not found: %s" % cacheDir
 
-    if argv['--resultDir'] == None:
+    if argv['--outputDirectory'] == None:
         print("*** data sink result directory is set to the neighbor to the cache directory.")
-        resultDir = os.path.join( os.path.dirname( os.path.abspath( cacheDir )), "LD_Result")
-        print("    :{0}".format( resultDir ) )
+        outputDirectory = os.path.join( os.path.dirname( os.path.abspath( cacheDir )), "LD_Result")
+        print("    :{0}".format( outputDirectory ) )
     else:
-        resultDir = os.path.abspath(argv['--resultDir'])
-        if not os.path.exists( resultDir ):
-            os.makedirs( resultDir )
-        assert os.path.exists(resultDir), "Results directory is not found: %s" % resultDir
+        outputDirectory = os.path.abspath(argv['--outputDirectory'])
+        if not os.path.exists( outputDirectory ):
+            os.makedirs( outputDirectory )
+        assert os.path.exists(outputDirectory), "Results directory is not found: %s" % outputDirectory
 
-    if argv['--outputPrefix'] == None:
-        print("*** output data prefix will be 'WMHFLAIRExtractCandidateROIOutput_'")
-        outputPrefix="WMHFLAIRExtractCandidateROIOutput_"
-    else:
-        outputPrefix=argv['--outputPrefix']
     print('=' * 100)
 
     #####################################################################################
@@ -415,7 +409,7 @@ if __name__ == '__main__':
     import nipype.pipeline.engine as pe  # pypeline engine
     from nipype.interfaces.utility import Merge, Split, Function, Rename, IdentityInterface
 
-    wmh_localWF =  wmh_roiExtractor( processingType, resultDir)
+    wmh_localWF =  wmh_roiExtractor( processingType, outputDirectory)
     wmh_localWF.base_dir = cacheDir
 
     wmh_localWF_inputspec = wmh_localWF.get_node('inputspec')
@@ -443,6 +437,6 @@ script example
 #   --inputIntensityReference /Users/eunyoungkim/src/NamicBuild_20171031/bin/Atlas/Atlas_20131115/template_t2_clipped.nii.gz\
 #   --python_aux_paths ".:/Users/eunyoungkim/src/BRAINS_FLAIRWorkflow/BRAINSTools/AutoWorkup/" \
 #   --cacheDir my_CACHE \
-#   --resultDir my_Result
+#   --outputDirectory my_Result
 
 
