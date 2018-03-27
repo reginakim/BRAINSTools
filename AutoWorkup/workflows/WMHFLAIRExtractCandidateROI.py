@@ -41,13 +41,21 @@ import sys
 
 from docopt import docopt
 
-def Threshold(inputVolume, outputVolume, thresholdLower=-0.1, thresholdUpper=1.1):
+def Smooth(inputVolume, outputVolume, sigma=3):
     import os
     import sys
     import SimpleITK as sitk
-    ## Now clean up the posteriors based on anatomical knowlege.
-    ## sometimes the posteriors are not relevant for priors
-    ## due to anomolies around the edges.
+    inputImg = sitk.Cast(sitk.RescaleIntensity( sitk.ReadImage(inputVolume), 0,1), sitk.sitkFloat32)
+    outputImg = sitk.SmoothingRecursiveGaussian( inputImg, sigma)
+
+    sitk.WriteImage(outputImg, outputVolume)
+    outputVolume = os.path.realpath(outputVolume)
+    return  outputVolume
+
+def Threshold(inputVolume, outputVolume, thresholdLower, thresholdUpper=1.1):
+    import os
+    import sys
+    import SimpleITK as sitk
     inputImg = sitk.Cast(sitk.RescaleIntensity( sitk.ReadImage(inputVolume), 0,1), sitk.sitkFloat32)
     outputImg = sitk.BinaryThreshold( inputImg, thresholdLower, thresholdUpper)
 
@@ -59,9 +67,6 @@ def HistogramMatching(inputVolume, refVolume, outputVolume):
     import os
     import sys
     import SimpleITK as sitk
-    ## Now clean up the posteriors based on anatomical knowlege.
-    ## sometimes the posteriors are not relevant for priors
-    ## due to anomolies around the edges.
     inputImg = sitk.Cast(sitk.ReadImage(inputVolume), sitk.sitkFloat32)
     refImg = sitk.Cast( sitk.ReadImage(refVolume), sitk.sitkFloat32)
     outputImg = sitk.HistogramMatching( inputImg, refImg )
@@ -75,9 +80,6 @@ def HistogramEqualizer(inputVolume, outputVolume):
     import os
     import sys
     import SimpleITK as sitk
-    ## Now clean up the posteriors based on anatomical knowlege.
-    ## sometimes the posteriors are not relevant for priors
-    ## due to anomolies around the edges.
     inputImg = sitk.Cast(sitk.ReadImage(inputVolume), sitk.sitkFloat32)
     outputImg = sitk.AdaptiveHistogramEqualization( inputImg )
     outputImg = sitk.Cast( sitk.RescaleIntensity( outputImg, 0, 1), sitk.sitkFloat32)
@@ -90,9 +92,6 @@ def ClipVolumeWithBinaryMask(inputVolume, inputBinaryVolume, outputVolume):
     import os
     import sys
     import SimpleITK as sitk
-    ## Now clean up the posteriors based on anatomical knowlege.
-    ## sometimes the posteriors are not relevant for priors
-    ## due to anomolies around the edges.
     inputImg = sitk.Cast(sitk.ReadImage(inputVolume), sitk.sitkFloat32)
     inputMsk = sitk.Cast(sitk.ReadImage(inputBinaryVolume), sitk.sitkFloat32)
     inputMskBinary = sitk.Cast( (inputMsk > 0 ), sitk.sitkFloat32)
@@ -226,20 +225,22 @@ def wmh_roiExtractor( processingType, outputDirectory ):
                          name="threshold")
 
     threshold.inputs.outputVolume = 'lesionCandidateDetectedLabel.nii.gz'
+    if processingType == "hyper" :
+        print("hypertension thresholding WF")
+        LesionDetectorWF.connect( inputsSpec, 'thresholdValue',
+                                  threshold, 'thresholdLower')
+        threshold.inputs.thresholdUpper = 1.1
+        #threshold.iterables = ( 'thresholdLower', thresholdList )
+        #threshold.iterables = ( 'thresholdLower', [0.3, 0.4, 0.45, 0.5] )
+    else:
+        LesionDetectorWF.connect( inputsSpec, 'thresholdValue',
+                                  threshold, 'thresholdUpper')
+        threshold.inputs.thresholdLower = -0.1
+        #threshold.iterables = ( 'thresholdUpper', thresholdList )
+        #threshold.iterables = ( 'thresholdUpper', [025,0.26,0.27,0.28,0.29] )
 
 
-    ## Skull Striping Input
     if( useIntensityReference ):
-        if processingType == "hyper" :
-            LesionDetectorWF.connect( inputsSpec, 'thresholdValue',
-                                      threshold, 'thresholdLower')
-            #threshold.iterables = ( 'thresholdLower', thresholdList )
-            #threshold.iterables = ( 'thresholdLower', [0.3, 0.4, 0.45, 0.5] )
-        else:
-            LesionDetectorWF.connect( inputsSpec, 'thresholdValue',
-                                      threshold, 'thresholdUpper')
-            #threshold.iterables = ( 'thresholdUpper', thresholdList )
-            #threshold.iterables = ( 'thresholdUpper', [025,0.26,0.27,0.28,0.29] )
         print( """
         *** Use the input Intensity Reference Volume for the Histogram Matching""")
         histMatching = pe.Node( interface = Function( function = HistogramMatching,
@@ -253,19 +254,7 @@ def wmh_roiExtractor( processingType, outputDirectory ):
                                   histMatching, 'refVolume')
         LesionDetectorWF.connect( histMatching, 'outputVolume',
                                   threshold, 'inputVolume' )
-
-
     else:
-        if processingType == "hyper" :
-            LesionDetectorWF.connect( inputsSpec, 'thresholdValue',
-                                      threshold, 'thresholdLower')
-            #threshold.iterables = ( 'thresholdLower', thresholdList  )
-            #threshold.iterables = ( 'thresholdLower', [0.7, 0.725, 0.75, 0.775, 0.8] )
-        else:
-            LesionDetectorWF.connect( inputsSpec, 'thresholdValue',
-                                      threshold, 'thresholdUpper')
-            #threshold.iterables = ( 'thresholdUpper', thresholdList )
-            #threshold.iterables = ( 'thresholdUpper', [0.4, 0.45, 0.5] )
         print( """
         *** Use the Histogram Equalizer""")
         ## Histogram Equalaizer
@@ -280,34 +269,30 @@ def wmh_roiExtractor( processingType, outputDirectory ):
         LesionDetectorWF.connect( histEq, 'outputVolume',
                                   threshold, 'inputVolume' )
 
-    if processingType == "hypo":
-        ## Skull Striping the Label
-        BrainClip_Label = pe.Node(interface=Function(function=ClipVolumeWithBinaryMask,
-                                                 input_names=['inputVolume',
-                                                              'inputBinaryVolume',
-                                                              'outputVolume'],
-                                                 output_names=['outputVolume']),
-                              name="BrainClip_Label")
-        BrainClip_Label.inputs.outputVolume= 'BrainClip_Label.nii.gz'
 
-        LesionDetectorWF.connect( threshold, 'outputVolume',
-                                  BrainClip_Label, 'inputVolume')
-        LesionDetectorWF.connect( inputsSpec, 'LabelMapVolume',
-                                  BrainClip_Label, 'inputBinaryVolume')
-        LesionDetectorWF.connect(BrainClip_Label, 'outputVolume',
-                                 LesionDetectorDS, 'Threshold.@threshold')
-        LesionDetectorDS.inputs.substitutions = [('/_thresholdUpper_','_'),
-                                             ('/BrainClip_Label.nii.gz','/lesionCandidateDetectedLabel.nii.gz'),
-                                             ('Transform/','')]
+    LesionDetectorWF.connect(threshold, 'outputVolume', LesionDetectorDS, 'Threshold.@threshold')
 
-    else:
-        LesionDetectorWF.connect(threshold, 'outputVolume', LesionDetectorDS, 'Threshold.@threshold')
-        LesionDetectorDS.inputs.substitutions = [('/_thresholdLower_','_'),
-                                             ('/lesionCandidateDetectedLabel.nii.gz','_labelmap.nii.gz'),
-                                             ('Transform/',''),
-                                             ('Threshold/','')]
     LesionDetectorWF.connect( DenoisedInput, 'outputVolume',
                               LesionDetectorDS, 'Threshold.@inputFLAIR')
+
+    """
+    Smooth for the probability map
+    """
+    smoothND = pe.Node( interface = Function( function= Smooth,
+                                              input_names= ['inputVolume','outputVolume','sigma'],
+                                              output_names= ['outputVolume']),
+                        name='smoothND')
+    smoothND.inputs.outputVolume = 'candidateLesion_smooth.nii.gz'
+    smoothND.inputs.sigma = 2
+    LesionDetectorWF.connect( threshold, 'outputVolume',
+                              smoothND, 'inputVolume')
+    LesionDetectorWF.connect( smoothND, 'outputVolume',
+                              LesionDetectorDS, 'Smooth.@smooth')
+    LesionDetectorDS.inputs.substitutions = [('/_thresholdLower_','_'),
+                                         ('Threshold/',''),
+                                         ('/lesionCandidateDetectedLabel.nii.gz','/candidateLesion.nii.gz'),
+                                         ('Transform/',''),
+                                         ('Smooth/','') ]
 
 
     print("Return the workflow ...")
@@ -417,6 +402,7 @@ if __name__ == '__main__':
     wmh_localWF_inputspec.inputs.inputT1Volume = inputT1Volume
     wmh_localWF_inputspec.inputs.inputIntensityReference = inputIntensityReference 
     wmh_localWF_inputspec.inputs.inputBrainMask = LabelMapImage
+    wmh_localWF_inputspec.inputs.thresholdValue = float(thresholdValue)
 
     wmh_localWF.run()
 
